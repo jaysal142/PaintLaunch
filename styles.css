@@ -1,53 +1,50 @@
+@font-face {
+    font-family: 'Pixel';
+    src: url('fonts/PixelOperator8-Bold.ttf') format('truetype');
+}
+@font-face {
+    font-family: 'Pixel-B';
+    src: url('fonts/PixelOperatorMono-Bold.ttf') format('truetype');
+}
+
 :root {
+    font-family: 'Pixel';
     margin: 16px;
     --power: 0px;
     --error-right: 0px;
+    --color: #54c6ca;
 }
+
 .game-window {
     position: relative;
 }
 
 .window {
     position: absolute;
-    background-color: black;
-    border: 1px solid white;
     display: flex;
     flex-direction: column;
-    justify-content: top;
+    justify-content: flex-start;
     align-items: center;
-}
-
-.window-bar {
-    background-color: azure;
-    width: 100%;
-    height: 12px;
-    display: flex;
-    justify-content: flex-end;
 }
 
 .window-title {
     color: black;
     margin: 0;
-    margin-left: 2px;
-    margin-right: auto;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: x-small;
     line-height: 12px;
 }
 
 .buttons {
+    font-family: 'Pixel-B';
     border: 2px solid;
-    border-radius: 20px;
-    box-shadow: 2px 5px 10px 2px grey inset;
-    background-color: black;
-    color: azure;
+    background-color: white;
+    color: black;
     padding: 4px 12px;
     margin: 8px;
 }
 
 .buttons:active {
-    box-shadow: 2px -5px 10px 2px grey inset;
-    background-color: #22e622;
+    background-color: var(--color);
 }
 
 .window--power {
@@ -57,25 +54,26 @@
 
 #power-bar {
     height: 20px;
-    width: 200px;
-    border: 2px solid white;
-    border-radius: 20px;
-    box-shadow: 2px 5px 10px 2px grey inset;
-    background-color: black;
+    width: 300px;
+    border: 2px solid black;
+    background-color: white;
     margin: 8px;
 }
 
 #power {
     height: 20px;
     width: var(--power);
-    border-radius: 20px;
-    box-shadow: 2px -5px 10px 2px grey inset;
-    background-color: #22e622;
+    background-color: var(--color);
+}
+
+.window--reset {
+    top: 32px;
+    right: 12px;
 }
 
 .window--shop {
     top: 96px;
-    right: 12px;    
+    left: 12px;    
 }
 
 .window--popup {
@@ -110,11 +108,6 @@
     margin-right: auto;
 }
 
-.window--reset {
-    top: 32px;
-    right: 12px;
-}
-
 .window--score {
     visibility: hidden;
     top: 178px;
@@ -126,7 +119,7 @@
 }
 
 #score {
-    color: azure;
+    color: var(--color);
     text-align: center;
     margin: 8px;
 }

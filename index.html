@@ -16,34 +16,18 @@
             <canvas id="game"></canvas>
 <!-- POWER BAR -->
             <div id="w-power" class="window window--power">
-                <div class="window-bar">
-                    <p class="window-title">POWER</p>
-                    <img src="images/window-minimize.png" style="padding: 2px;" onclick="makeSmall('w-power')">
-                    <img src="images/square.png" style="padding: 2px;" onclick="makeFull('w-power')">
-                    <img src="images/cross.png" style="padding: 2px;">
-                </div>
+                <p class="window-title">POWER</p>
                 <div id="power-bar">
                     <div id="power"></div>
                 </div>
             </div>
 <!-- SHOP -->
             <div id="w-shop" class="window window--shop">
-                <div class="window-bar">
-                    <p class="window-title">SHOP</p>
-                    <img src="images/window-minimize.png" style="padding: 2px;" onclick="makeSmall('u-cannon')">
-                    <img src="images/square.png" style="padding: 2px;" onclick="makeFull('u-cannon')">
-                    <img src="images/cross.png" style="padding: 2px;">
-                </div>
-                <button id="u-cannon" class="buttons" onclick="upgradeCannon()">UPGRADE CANNON</button>
+                <button id="u-cannon" class="buttons" onclick="upgradeCannon()">SHOP</button>
             </div>
 
             <div id="w-popup" class="window window--popup">
-                <div class="window-bar">
-                    <p class="window-title">SHOP</p>
-                    <img src="images/window-minimize.png" style="padding: 2px;">
-                    <img src="images/square.png" style="padding: 2px;">
-                    <img src="images/cross.png" style="padding: 2px;" onclick="closeDiv('w-popup')">
-                </div>
+                <p class="window-title">SHOP</p>
                 <div id="better" class="shop-item">
                     <img id="shop-item-1">
                     <p id="description">DESC.</p>
@@ -52,26 +36,15 @@
             </div>
 <!-- RESET --> 
             <div id="w-reset" class="window window--reset">
-                <div class="window-bar">
-                    <p class="window-title">RESET</p>
-                    <img src="images/window-minimize.png" style="padding: 2px;" onclick="makeSmall('reset')">
-                    <img src="images/square.png" style="padding: 2px;" onclick="makeFull('reset')">
-                    <img src="images/cross.png" style="padding: 2px;">
-                </div>
                 <button id="reset" class="buttons" onclick="resetGame()">RESET</button>
             </div>
 <!-- SCORE -->
             <div id="w-score" class="window window--score">
-                <div class="window-bar">
-                    <p class="window-title">SCORE</p>
-                    <img src="images/window-minimize.png" style="padding: 2px;">
-                    <img src="images/square.png" style="padding: 2px;">
-                    <img src="images/cross.png" style="padding: 2px;" onclick="closeDiv('w-score')">
-                </div>
+                <p class="window-title">SCORE</p>
                 <p id="score">SCORE: </p>
             </div>
         </div>
 
-        <script src="/camera.js"></script>
+        <script src="camera.js"></script>
     </body>
 </html>

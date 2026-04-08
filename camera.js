@@ -2,19 +2,9 @@ const root = document.getElementById("game-root");
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const reset = document.getElementById("reset");
-const skyImg = new Image();
-const bgImg = new Image();
-const mgImg = new Image();
-const fgImg = new Image();
-const cbgImg = new Image();
 const cbaseImg = new Image();
 const cbarrelImg = new Image();
-
-skyImg.src = "images/city 8/1.png";
-bgImg.src = "images/city 8/3.png";
-mgImg.src = "images/city 8/4.png";
-fgImg.src = "images/city 8/5.png";
-cbgImg.src = "images/project_window.png";
+const pbImg = new Image();
 
 canvas.width = root.getBoundingClientRect().width;
 canvas.height = 400;
@@ -29,8 +19,9 @@ const projectile = {
     y: groundY,
     vx: 0,
     vy: 0,
-    radius: 10,
-    launched: false
+    radius: 20,
+    launched: false,
+    rotation: 0
 };
 
 const cannon = {
@@ -46,8 +37,9 @@ const cannon = {
 }
 
 const cCosmetics = {
-    barrelImage: "images/cannons/starter_barrel.png",
-    baseImage: "images/cannons/starter_base.png"
+    barrelImage: "images/cannons/base-b.png",
+    baseImage: "images/cannons/base-c.png",
+    pbImage: "images/paintboy/base-pb.png"
 }
 
 const camera = {
@@ -70,6 +62,7 @@ function fireCannon() {
 function update(dt) {
     cbaseImg.src = cCosmetics.baseImage;
     cbarrelImg.src = cCosmetics.barrelImage;
+    pbImg.src = cCosmetics.pbImage;
     canvas.width = root.getBoundingClientRect().width;
 
     if (cannon.charging) {
@@ -81,6 +74,7 @@ function update(dt) {
         projectile.vy += gravity * dt;
         projectile.x += projectile.vx * dt;
         projectile.y += projectile.vy * dt;
+        projectile.rotation += (projectile.vx / projectile.radius) * dt;
 
         if (projectile.y > groundY) {
             projectile.y = groundY;
@@ -106,59 +100,37 @@ function update(dt) {
     }
 }
 
-function drawInfLayer(img, speed, vertFactor, fillColor) {
-    if (!img.complete) return;
-
-    const layerWidth = img.width;
-    const offsetX = (camera.x * speed) % layerWidth;
-    const baseY = Math.floor(groundY - img.height);
-
-    ctx.save();
-    ctx.translate(-offsetX, -camera.y * vertFactor);
-
-    for (let x = -layerWidth; x < canvas.width + layerWidth; x += layerWidth) {
-        ctx.drawImage(img, x, baseY);
-        ctx.fillStyle = fillColor;
-        ctx.fillRect(x, baseY + img.height, layerWidth, canvas.height * 2);
-    }
-    ctx.restore();
-}
-
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // SKY
-    drawInfLayer(skyImg, 0, 0, "#5b9da5");
-    // BACKGROUND
-    drawInfLayer(bgImg, 0.2, 0.3, "#5d3a6a");
-    // MIDGROUND
-    drawInfLayer(mgImg, 0.5, 0.6, "#21151c");
-    // FOREGROUND
-    drawInfLayer(fgImg, 0.8, 0.9, "#2e294e");
+    ctx.fillStyle = "#ecebe8";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    let power = (cannon.power / cannon.maxPower) * 200;
+    let power = (cannon.power / cannon.maxPower) * 300;
     document.documentElement.style.setProperty('--power', power + 'px');
 
     ctx.save();
     ctx.translate(-camera.x, -camera.y);
 
     // GROUND
-    ctx.fillStyle = "#655776";
+    ctx.fillStyle = "#ecebe8";
     ctx.fillRect(camera.x - canvas.width, groundY, canvas.width * 3, canvas.height);
 
-    ctx.drawImage(cbgImg, -50, cannon.y / 2 , 300, 300 * cbgImg.height / cbgImg.width);
-
     // BALL
+    ctx.save();
+    ctx.translate(projectile.x, projectile.y);
+    ctx.rotate(projectile.rotation);
     ctx.beginPath();
-    ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
-    ctx.fillStyle = "#22e622";
-    ctx.fill();
+    ctx.arc(0, 0, projectile.radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(pbImg, -projectile.radius, -projectile.radius, projectile.radius * 2, projectile.radius * 2);
+    ctx.restore();
 
     // CANNON
     ctx.save();
     ctx.translate(cannon.x, cannon.y);
     ctx.rotate(-cannon.angle * Math.PI / 180);
     ctx.fillStyle = "#dee0df";
-    ctx.drawImage(cbarrelImg, -20, -80, 150, 150);
+    ctx.drawImage(cbarrelImg, 0, -25, 96, 46);
     ctx.restore();
     ctx.drawImage(cbaseImg, cannon.x / 3 - 10, cannon.y - 80, 150, 150 * cbaseImg.height / cbaseImg.width);
 }
@@ -224,13 +196,14 @@ function upgradeCannon() {
     upgradeWindow = document.getElementById('w-popup');
     upgradeWindow.style.visibility = 'visible';
 
-    document.getElementById("shop-item-1").src = '/images/cannons/better_base.png';
+    document.getElementById("shop-item-1").src = '/images/cannons/blue-c.png';
 };
 
 function buyItem(item, power, charge) {
     document.getElementById(item).style.visibility = 'hidden';
     cannon.maxPower += power;
     cannon.chargeSpeed += charge;
-    cCosmetics.baseImage = '/images/cannons/' + item + '_base.png';
-    cCosmetics.barrelImage = '/images/cannons/' + item + '_barrel.png';
+    cCosmetics.baseImage = '/images/cannons/' + item + '-c.png';
+    cCosmetics.barrelImage = '/images/cannons/' + item + '-b.png';
+    cCosmetics.pbImage = '/images/paintboy/' + item + '-pb.png';
 };
