@@ -13,6 +13,14 @@ body {
     transform: translate(-50%,-50%);
     border: 5px solid white;
 }
-#playerImage, #cannonImage, #barrelImage, #backgroundImage, #enemyImage {
+#playerBase, #playerBlue, #playerRed, #playerGold, #playerNeon,
+#baseCannon, #baseBarrel, 
+#blueCannon, #blueBarrel, 
+#redCannon, #redBarrel, 
+#goldCannon, #goldBarrel, 
+#neonCannon, #neonBarrel, 
+#backgroundImage1, #backgroundImage2, #backgroundImage3, 
+#backgroundImage4, #backgroundImage5, #backgroundImage6, 
+#enemyImage, #enemy2Image, #enemy3Image {
     display: none;
 }
