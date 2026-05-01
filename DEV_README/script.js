@@ -1,24 +1,48 @@
 window.addEventListener('load', function() {
+    let gameReady = false;
+
     const canvas = document.getElementById('canvas1');
     const ctx = canvas.getContext('2d');
     canvas.width = 1000;
     canvas.height = 720;
+    let hitFlash = 0;
+    let boostFlash = 0;
     let cameraY = 0;
     let targetCameraY = 0;
     let enemies = [];
     let aerialEnemyTimer = 0;
     let aerialEnemyInterval = 500;
     let randomAerialInterval = Math.random() * 500 + 250;
+
     let score = 0;
     let highScore = 0;
+    let leaderboard = [];
+    let leaderboardTimer = 0;
+    let lastScoredDistance = 0;
+    const LEADERBOARD_FETCH_INTERVAL = 30000; // refresh every 30s
+
+    let baseLives = 3;
     let lives = 3;
+    let baseBoosts = 3;
     let gameOver = false;
     let gameStart = false;
-    let shopOpen = false;
     let currency = 0;
     let lastCoinScore = 0;
     let upgrades = { power: 0, speed: 0 };
-    let cosmetics = { skin: 0 };
+    let cosmetics = { cannonPaint: null };
+    let shopOpen = false;
+    let inventoryOpen = false;
+
+    let inventory = {
+        cannons: ['base'], // base cannon always owned
+        activeCannon: 'base'
+    };
+
+    let playerAuth = {
+        loggedIn: false,
+        username: null,
+        token: null,
+    };
 
     const shopItems = {
         cannon: [
@@ -28,12 +52,8 @@ window.addEventListener('load', function() {
                 cost: 500,
                 owned: false,
                 onBuy: () => {
-                    cosmetics.cannonPaint = 'blue';
-                    cannon.image = document.getElementById('blueCannon');
-                    barrel.image = document.getElementById('blueBarrel');
-                    player.image = document.getElementById('playerBlue');
-                    upgrades.power = 5;
-                    upgrades.speed = 1;
+                    if (!inventory.cannons.includes('blue')) inventory.cannons.push('blue');
+                    applyCannonSkin('blue');
                 }
             },
             {
@@ -42,26 +62,18 @@ window.addEventListener('load', function() {
                 cost: 2000,
                 owned: false,
                 onBuy: () => {
-                    cosmetics.cannonPaint = 'red';
-                    cannon.image = document.getElementById('redCannon');
-                    barrel.image = document.getElementById('redBarrel');
-                    player.image = document.getElementById('playerRed');
-                    upgrades.power = 15;
-                    upgrades.speed = 3;
+                    if (!inventory.cannons.includes('red')) inventory.cannons.push('red');
+                    applyCannonSkin('red');
                 }
             },
             {
                 label: 'Gold Paint',
-                desc: 'A prestigious gold cannon',
+                desc: 'A royal gold cannon',
                 cost: 8000,
                 owned: false,
                 onBuy: () => {
-                    cosmetics.cannonPaint = 'gold';
-                    cannon.image = document.getElementById('goldCannon');
-                    barrel.image = document.getElementById('goldBarrel');
-                    player.image = document.getElementById('playerGold');
-                    upgrades.power = 35;
-                    upgrades.speed = 8;
+                    if (!inventory.cannons.includes('gold')) inventory.cannons.push('gold');
+                    applyCannonSkin('gold');
                 }
             },
             {
@@ -70,32 +82,45 @@ window.addEventListener('load', function() {
                 cost: 30000,
                 owned: false,
                 onBuy: () => {
-                    cosmetics.cannonPaint = 'neon';
-                    cannon.image = document.getElementById('neonCannon');
-                    barrel.image = document.getElementById('neonBarrel');
-                    player.image = document.getElementById('playerNeon');
-                    upgrades.power = 70;
-                    upgrades.speed = 18;
+                    if (!inventory.cannons.includes('neon')) inventory.cannons.push('neon');
+                    applyCannonSkin('neon');
                 }
             },
         ],
         player: [
             {
-                label: 'Alt Skin',
-                desc: 'Different player skin',
+                label: 'Extra Life',
+                desc: '+1 temporary life',
+                cost: 500,
+                owned: false,
+                repeatable: true,
+                onBuy: () => { lives++; }
+            },
+            {
+                label: 'More Life',
+                desc: '+1 permanent life',
                 cost: 1000,
                 owned: false,
-                onBuy: () => { cosmetics.skin = 1; }
+                repeatable: true,
+                onBuy: () => { baseLives++; lives++; }
             },
         ],
         boost: [
             {
                 label: 'Extra Boost',
-                desc: '+1 boost per run',
-                cost: 750,
+                desc: '+1 temporary boost',
+                cost: 250,
                 owned: false,
                 repeatable: true,
                 onBuy: () => { player.boosts++; }
+            },
+            {
+                label: 'Extra Boost',
+                desc: '+1 parmanent boost',
+                cost: 750,
+                owned: false,
+                repeatable: true,
+                onBuy: () => { baseBoosts++; player.boosts++; }
             },
             {
                 label: 'Boost Power',
@@ -139,46 +164,97 @@ window.addEventListener('load', function() {
             window.addEventListener('mousedown', e => {
                 if (e.button === 0) {
                     this.clicked = true;
+                    // start game
+                    if (!gameReady) {
+                        const rect = canvas.getBoundingClientRect();
+                        const mx = e.clientX - rect.left;
+                        const my = e.clientY - rect.top;
+                        if (mx > canvas.width/2 - 110 && mx < canvas.width/2 + 110 && my > 300 && my < 360) {
+                            gameReady = true;
+                        }
+                        return;
+                    }
+                    // game over
                     if (gameOver) {
                         const rect = canvas.getBoundingClientRect();
                         const mx = e.clientX - rect.left;
                         const my = e.clientY - rect.top;
-                        if (mx > canvas.width/2 - 100 && mx < canvas.width/2 + 100 && my > 550 && my < 610) {
+                        // RESTART/PLAYAGAIN button
+                        if (mx > canvas.width/2 - 110 && mx < canvas.width/2 + 110 && my > 590 && my < 650) {
                             reset();
                         }
                         return;
                     }
-                    if (gameStart) return; // shop only in aiming phase
+                    // aiming phase
+                    if (gameStart) return;
                     const rect = canvas.getBoundingClientRect();
                     const mx = e.clientX - rect.left;
                     const my = e.clientY - rect.top;
+                    // inventory button
+                    if (mx > canvas.width - 120 && mx < canvas.width - 20 && my > 190 && my < 240) {
+                        inventoryOpen = !inventoryOpen;
+                        shopOpen = false;
+                    }
+                    // inventory slot clicks
+                    if (inventoryOpen) {
+                        const wx = canvas.width/2 - 250;
+                        const wy = canvas.height/2 - 180;
+                        const ww = 500;
+                        const slotW = 90;
+                        const slotH = 110;
+                        const cols = 4;
+                        const startX = wx + (ww - cols * (slotW + 10)) / 2;
+                        const startY = wy + 75;
+                        // close button
+                        if (mx > wx + ww - 40 && mx < wx + ww && my > wy && my < wy + 40) {
+                            inventoryOpen = false;
+                        }
+                        // slot clicks
+                        inventory.cannons.forEach((key, i) => {
+                            const col = i % cols;
+                            const row = Math.floor(i / cols);
+                            const sx = startX + col * (slotW + 10);
+                            const sy = startY + row * (slotH + 10);
+                            if (mx > sx && mx < sx + slotW && my > sy && my < sy + slotH) {
+                                applyCannonSkin(key);
+                            }
+                        });
+                    }
+                    // sign in button
+                    if (mx > canvas.width - 120 && mx < canvas.width - 20 && my > 130 && my < 180) {
+                        document.getElementById('authModal').style.display = 'block';
+                    }
+                    // shop open button
                     if (mx > canvas.width - 120 && mx < canvas.width - 20 && my > 70 && my < 120) {
                         shopOpen = !shopOpen;
                     }
                     if (shopOpen) {
                         const wx = canvas.width/2 - 300;
-                        const wy = canvas.height/2 - 200;
+                        const wy = 40;
                         const ww = 600;
+                        const wh = canvas.height - 80;
                         const colW = ww / 3;
-
                         // close button
                         if (mx > wx + ww - 40 && mx < wx + ww && my > wy && my < wy + 40) {
                             shopOpen = false;
                         }
-
                         // buy buttons
                         const cols = ['cannon', 'player', 'boost'];
                         cols.forEach((key, ci) => {
                             shopItems[key].forEach((item, i) => {
-                                const itemX = wx + ci * colW + 10;
-                                const itemW = colW - 20;
-                                const iy = wy + 110 + i * 90;
-                                const bx = itemX + itemW/2 - 35;
-                                if (mx > bx && mx < bx + 70 && my > iy + 46 && my < iy + 70) {
+                                const itemX = wx + ci * colW + 8;
+                                const itemW = colW - 16;
+                                const iy = wy + 100 + i * 130;
+                                const itemH = 115;
+                                const btnY = iy + itemH - 36;
+                                const btnX = itemX + 8;
+                                const btnW = itemW - 16;
+                                if (mx > btnX && mx < btnX + btnW && my > btnY && my < btnY + 28) {
                                     if (currency >= item.cost && (!item.owned || item.repeatable)) {
                                         currency -= item.cost;
                                         if (!item.repeatable) item.owned = true;
                                         item.onBuy();
+                                        savePlayerData();
                                     }
                                 }
                             });
@@ -286,7 +362,7 @@ window.addEventListener('load', function() {
         getExit() {
             const radians = this.angle * Math.PI / 180;
             const pivotX = this.x;
-            const pivotY = this.y + this.height/this.width;
+            const pivotY = this.y + this.height / 2;
             const exitX = pivotX + Math.cos(radians) * this.width;
             const exitY = pivotY + Math.sin(radians) * this.width;
             return {x: exitX, y: exitY };
@@ -328,7 +404,7 @@ window.addEventListener('load', function() {
             const frameY = Math.floor(this.frame / this.cols);
             context.drawImage(this.image, frameX * frameW, frameY * frameH, frameW, frameH, this.x, this.y, this.width, this.height);
         }
-        update(deltaTime, enemies) {
+        update(deltaTime, enemies, bgHeight) {
             if (this.justLaunched) {
                 this.justLaunched = false;
                 input.clicked = false; // discard any click that happened on launch frame
@@ -336,9 +412,10 @@ window.addEventListener('load', function() {
             // boost logic
             if (this.launched && input.clicked && this.boosts > 0) {
                 const power = this.boostPower || 1;
-                this.vy -= 25 * power;
+                this.vy = Math.min(this.vy, 0) - 25 * power; // clamp to 0 first, then apply boost
                 this.speed += 5 * power;
                 this.boosts--;
+                boostFlash = 10;
                 input.clicked = false;
             }
             // collision detection
@@ -367,7 +444,8 @@ window.addEventListener('load', function() {
                         }
                     } else {
                         lives--;
-                        if (lives <= 0) gameOver = true;
+                        hitFlash = 20;
+                        if (lives <= 0) { gameOver = true; }
                     }
                 }
             });
@@ -389,14 +467,13 @@ window.addEventListener('load', function() {
                 this.speed *= decay;
                 this.distance = (this.distance || 0) + this.speed;
             }
-            if (this.launched && this.speed < 1) {
+            if (this.launched && this.speed < 1 && this.onGround()) {
                 gameOver = true;
             }
             // vertical movement
             this.y += this.vy;
             if (!this.onGround()) {
                 if (this.vy >= 0 && !this.peakReached) this.peakReached = true;
-                const bgHeight = background.height;
                 const traveled = canvas.height - this.y - this.height;
                 const pastThreshold = traveled > bgHeight * 0.5;
                 if (this.peakReached && pastThreshold && !this.stalling && this.stallTimer === 0) {
@@ -470,12 +547,16 @@ window.addEventListener('load', function() {
             this.layers.forEach(layer => {
                 const offscreen = document.createElement('canvas');
                 offscreen.width = this.width;
-                offscreen.height = this.height;
-                offscreen.getContext('2d').drawImage(layer.image, 0, 0);
+                offscreen.height = this.height; // keep full height for vertical scroll
+                const offCtx = offscreen.getContext('2d', { willReadFrequently: false });
+                offCtx.drawImage(layer.image, 0, 0);
                 layer.offscreen = offscreen;
+                // free the original image from memory once drawn to offscreen
+                layer.image.src = '';
             });
         }
         draw(context) {
+            context.imageSmoothingEnabled = false;
             this.layers.forEach(layer => {
                 const startY = -this.height + this.gameHeight + cameraY * 0.5 * layer.speedY;
                 context.drawImage(layer.offscreen, layer.x, startY, this.width, this.height);
@@ -533,8 +614,8 @@ window.addEventListener('load', function() {
     class Enemy2 extends Enemy {
         constructor(gameWidth, gameHeight) {
             super(gameWidth, gameHeight);
-            this.width = 120 * scale;
-            this.height = 100 * scale;
+            this.width = 160 * scale;
+            this.height = 119 * scale;
             this.image = document.getElementById('enemy2Image');
             this.maxFrame = 5;
             this.speed = 12;
@@ -548,8 +629,8 @@ window.addEventListener('load', function() {
     class Enemy3 extends Enemy {
         constructor(gameWidth, gameHeight) {
             super(gameWidth, gameHeight);
-            this.width = 200 * scale;
-            this.height = 150 * scale;
+            this.width = 160 * scale;
+            this.height = 119 * scale;
             this.image = document.getElementById('enemy3Image');
             this.maxFrame = 5;
             this.speed = 5;
@@ -560,6 +641,46 @@ window.addEventListener('load', function() {
         }
     }
 
+    function drawStartScreen(context) {
+        // overlay
+        context.fillStyle = 'rgba(0,0,0,0.6)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        drawText(context, 'PAINT LAUNCH', canvas.width/2, 180, '60px PixelOperator', 'white', 'center');
+        drawText(context, 'launch the paintboy across the sky', canvas.width/2, 230, '18px PixelOperator', 'rgba(255,255,255,0.6)', 'center');
+        // start button
+        context.fillStyle = '#2980b9';
+        context.fillRect(canvas.width/2 - 110, 300, 220, 60);
+        context.strokeStyle = 'rgba(255,255,255,0.3)';
+        context.lineWidth = 2;
+        context.strokeRect(canvas.width/2 - 110, 300, 220, 60);
+        drawText(context, 'PLAY', canvas.width/2, 340, '28px PixelOperator', 'white', 'center');
+        // controls preview
+        drawText(context, 'HOW TO PLAY', canvas.width/2, 420, '18px PixelOperator', 'rgba(255,255,255,0.5)', 'center');
+        const controls = [
+            ['↑ ↓', 'Aim the cannon'],
+            ['SPACE', 'Charge & fire'],
+            ['CLICK', 'Boost mid-flight'],
+            ['Enemy3', 'Bounce off for extra speed'],
+        ];
+        controls.forEach((row, i) => {
+            drawText(context, row[0], canvas.width/2 - 80, 450 + i * 34, '16px PixelOperator', '#FFD700', 'right');
+            drawText(context, row[1], canvas.width/2 - 60, 450 + i * 34, '16px PixelOperator', 'white', 'left');
+        });
+    }
+
+    function drawAimingOverlay(context) {
+        if (gameStart || !gameReady) return;
+        // bottom center control hints
+        const hints = [
+            '↑ ↓  Aim',
+            'SPACE  Charge & Fire',
+            'CLICK  Boost in flight',
+        ];
+        hints.forEach((hint, i) => {
+            drawText(context, hint, canvas.width/2, canvas.height - 80 + i * 24, '15px PixelOperator', 'rgba(255,255,255,0.7)', 'center');
+        });
+    }
+
     function drawTrajectory(context) {
         if (gameStart || !barrel) return;
         const exit = barrel.getExit();
@@ -568,18 +689,16 @@ window.addEventListener('load', function() {
         let vx = Math.cos(radians) * power + upgrades.speed;
         let vy = Math.sin(radians) * power;
         let x = exit.x;
-        let y = exit.y + 55;
-        const ratio = this.charge / 100;
+        let y = exit.y;
+        const ratio = barrel.charge / 100;
         const r = Math.floor(255 * Math.min(ratio * 2, 1));
         const g = Math.floor(255 * Math.min((1 - ratio) * 2, 1));
-
         context.save();
         context.setLineDash([6, 6]);
-        context.strokeStyle = `rgb(${r},${g},0)`;
+        context.strokeStyle = `rgb(${r},${g},0, 0.8)`;
         context.lineWidth = 4;
         context.beginPath();
         context.moveTo(x, y);
-
         for (let i = 0; i < 120; i++) {
             vx *= 0.99999;
             vy += player.weight;
@@ -588,97 +707,160 @@ window.addEventListener('load', function() {
             if (y >= canvas.height - player.height) break;
             context.lineTo(x, y);
         }
-
         context.stroke();
         context.setLineDash([]);
         context.restore();
     }
 
     function drawShop(context) {
-        if (gameStart) return;
-        // currency above shop button
-        context.font = '22px PixelOperator';
-        context.fillStyle = 'gold';
-        context.textAlign = 'right';
-        context.fillText('Coins: ' + currency, canvas.width - 20, 40);
+        if (gameStart || !gameReady) return;
         // shop button
         context.fillStyle = 'rgba(0,0,0,0.6)';
         context.fillRect(canvas.width - 120, 70, 100, 50);
         context.strokeStyle = 'black';
         context.lineWidth = 2;
         context.strokeRect(canvas.width - 120, 70, 100, 50);
-        context.font = '22px PixelOperator';
-        context.fillStyle = 'white';
-        context.textAlign = 'left';
-        context.fillText('SHOP', canvas.width - 109, 105);
+        drawText(context, 'SHOP', canvas.width - 109, 105, '22px PixelOperator');
+        // inventory button
+        context.fillStyle = 'rgba(0,0,0,0.6)';
+        context.fillRect(canvas.width - 130, 190, 110, 50);
+        context.strokeStyle = 'black';
+        context.lineWidth = 2;
+        context.strokeRect(canvas.width - 130, 190, 110, 50);
+        drawText(context, 'INVENTORY', canvas.width - 126, 222, '13px PixelOperator');
+        // coins
+        drawText(context, 'Coins: ' + currency, canvas.width - 20, 40, '22px PixelOperator', 'gold', 'right');
+        // sign in button
+        const authLabel = playerAuth.loggedIn ? playerAuth.username : 'SIGN IN';
+        context.font = '16px PixelOperator';
+        const authLabelWidth = context.measureText(authLabel).width;
+        const authBtnW = Math.max(100, authLabelWidth + 20);
+        const authBtnX = canvas.width - authBtnW - 20;
+        context.fillStyle = playerAuth.loggedIn ? 'rgba(0,150,0,0.6)' : 'rgba(0,0,0,0.6)';
+        context.fillRect(authBtnX, 130, authBtnW, 50);
+        context.strokeStyle = 'black';
+        context.lineWidth = 2;
+        context.strokeRect(authBtnX, 130, authBtnW, 50);
+        drawText(context, authLabel, authBtnX + 10, 160, '16px PixelOperator');
         if (!shopOpen) return;
-
         // overlay
         context.fillStyle = 'rgba(0,0,0,0.75)';
         context.fillRect(0, 0, canvas.width, canvas.height);
-
         // window
         const wx = canvas.width/2 - 300;
-        const wy = canvas.height/2 - 200;
+        const wy = 40;
         const ww = 600;
-        const wh = 440;
+        const wh = canvas.height - 80;
         context.fillStyle = '#1a1a2e';
         context.fillRect(wx, wy, ww, wh);
         context.strokeStyle = 'white';
         context.lineWidth = 2;
         context.strokeRect(wx, wy, ww, wh);
-
         // title
-        context.font = '28px PixelOperator';
-        context.fillStyle = 'white';
-        context.textAlign = 'center';
-        context.fillText('SHOP', canvas.width/2, wy + 36);
-        context.font = '18px PixelOperator';
-        context.fillStyle = 'gold';
-        context.fillText('Coins: ' + currency, canvas.width/2, wy + 60);
-
+        drawText(context, 'SHOP', canvas.width/2, wy + 36, '28px PixelOperator', 'white', 'center');
+        drawText(context, 'Coins: ' + currency, canvas.width/2, wy + 60, '18px PixelOperator', 'gold', 'center');
         // columns
         const cols = ['cannon', 'player', 'boost'];
         const colLabels = ['Cannon', 'Player', 'Boost'];
         const colW = ww / 3;
-
         cols.forEach((key, ci) => {
             const colX = wx + ci * colW + colW / 2;
-            // column header
-            context.font = '18px PixelOperator';
-            context.fillStyle = 'rgba(255,255,255,0.5)';
-            context.textAlign = 'center';
-            context.fillText(colLabels[ci], colX, wy + 90);
-
+            drawText(context, colLabels[ci], colX, wy + 90, '18px PixelOperator', 'rgba(255,255,255,0.7)', 'center');
             shopItems[key].forEach((item, i) => {
-                const iy = wy + 110 + i * 90;
-                const itemX = wx + ci * colW + 10;
-                const itemW = colW - 20;
-
+                const itemX = wx + ci * colW + 8;
+                const itemW = colW - 16;
+                const iy = wy + 100 + i * 130;
+                const itemH = 115;
+                const btnY = iy + itemH - 36;
+                const btnX = itemX + 8;
+                const btnW = itemW - 16;
                 context.fillStyle = item.owned && !item.repeatable ? 'rgba(0,200,0,0.15)' : 'rgba(255,255,255,0.07)';
-                context.fillRect(itemX, iy, itemW, 75);
+                context.fillRect(itemX, iy, itemW, itemH);
                 context.strokeStyle = item.owned && !item.repeatable ? 'rgba(0,200,0,0.5)' : 'rgba(255,255,255,0.2)';
-                context.strokeRect(itemX, iy, itemW, 75);
-
-                // label
-                context.fillStyle = 'white';
-                context.font = '14px PixelOperator';
-                context.textAlign = 'center';
-                context.fillText(item.label, colX, iy + 20);
-
-                // desc
-                context.fillStyle = 'rgba(255,255,255,0.6)';
-                context.font = '12px PixelOperator';
-                context.fillText(item.desc, colX, iy + 38);
-
-                // buy button
-                const bx = itemX + itemW/2 - 35;
+                context.strokeRect(itemX, iy, itemW, itemH);
+                drawText(context, item.label, colX, iy + 24, '14px PixelOperator', 'white', 'center');
+                drawText(context, item.desc, colX, iy + 46, '12px PixelOperator', 'rgba(255,255,255,0.6)', 'center');
                 context.fillStyle = item.owned && !item.repeatable ? '#27ae60' : currency >= item.cost ? '#2980b9' : '#555';
-                context.fillRect(bx, iy + 46, 70, 24);
-                context.fillStyle = 'white';
-                context.font = '14px PixelOperator';
-                context.fillText(item.owned && !item.repeatable ? 'OWNED' : item.cost + 'c', colX, iy + 63);
+                context.fillRect(btnX, btnY, btnW, 28);
+                drawText(context, item.owned && !item.repeatable ? 'OWNED' : item.cost + 'c', colX, btnY + 20, '13px PixelOperator', 'white', 'center');
             });
+        });
+        // close button
+        context.fillStyle = '#c0392b';
+        context.fillRect(wx + ww - 40, wy, 40, 40);
+        drawText(context, 'X', wx + ww - 20, wy + 28, '24px PixelOperator', 'white', 'center');
+    }
+
+    function drawInventory(context) {
+        if (gameStart || !inventoryOpen || !gameReady) return;
+        const cannonData = {
+            base: { label: 'Base',  color: '#888' },
+            blue: { label: 'Blue',  color: '#2980b9' },
+            red:  { label: 'Red',   color: '#c0392b' },
+            gold: { label: 'Gold',  color: '#f39c12' },
+            neon: { label: 'Neon',  color: '#00ffcc' },
+        };
+        // overlay
+        context.fillStyle = 'rgba(0,0,0,0.75)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        // window
+        const wx = canvas.width/2 - 250;
+        const wy = canvas.height/2 - 180;
+        const ww = 500;
+        const wh = 360;
+        context.fillStyle = '#1a1a2e';
+        context.fillRect(wx, wy, ww, wh);
+        context.strokeStyle = 'white';
+        context.lineWidth = 2;
+        context.strokeRect(wx, wy, ww, wh);
+        // title
+        context.font = '24px PixelOperator';
+        context.fillStyle = 'white';
+        context.textAlign = 'center';
+        context.fillText('INVENTORY', canvas.width/2, wy + 36);
+        context.font = '14px PixelOperator';
+        context.fillStyle = 'rgba(255,255,255,0.4)';
+        context.fillText('select a cannon to equip', canvas.width/2, wy + 58);
+        // cannon slots
+        const slotW = 90;
+        const slotH = 110;
+        const cols = 4;
+        const startX = wx + (ww - cols * (slotW + 10)) / 2;
+        const startY = wy + 75;
+        inventory.cannons.forEach((key, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const sx = startX + col * (slotW + 10);
+            const sy = startY + row * (slotH + 10);
+            const data = cannonData[key];
+            const isActive = key === inventory.activeCannon;
+            context.fillStyle = isActive ? 'rgba(41,128,185,0.3)' : 'rgba(255,255,255,0.07)';
+            context.fillRect(sx, sy, slotW, slotH);
+            context.strokeStyle = isActive ? '#2980b9' : 'rgba(255,255,255,0.2)';
+            context.lineWidth = isActive ? 2 : 1;
+            context.strokeRect(sx, sy, slotW, slotH);
+            // cannon color swatch
+            context.fillStyle = data.color;
+            context.fillRect(sx + 20, sy + 15, slotW - 40, 40);
+            // label
+            context.fillStyle = 'white';
+            context.font = '12px PixelOperator';
+            context.textAlign = 'center';
+            context.fillText(data.label, sx + slotW/2, sy + 72);
+            // equipped badge
+            if (isActive) {
+                context.fillStyle = '#2980b9';
+                context.fillRect(sx + 10, sy + 82, slotW - 20, 20);
+                context.fillStyle = 'white';
+                context.font = '11px PixelOperator';
+                context.fillText('EQUIPPED', sx + slotW/2, sy + 96);
+            } else {
+                context.fillStyle = 'rgba(255,255,255,0.15)';
+                context.fillRect(sx + 10, sy + 82, slotW - 20, 20);
+                context.fillStyle = 'rgba(255,255,255,0.6)';
+                context.font = '11px PixelOperator';
+                context.fillText('EQUIP', sx + slotW/2, sy + 96);
+            }
         });
 
         // close button
@@ -688,6 +870,26 @@ window.addEventListener('load', function() {
         context.font = '24px PixelOperator';
         context.textAlign = 'center';
         context.fillText('X', wx + ww - 20, wy + 28);
+    }
+
+    function applyCannonSkin(p) {
+        if (!cannon || !barrel || !player) return;
+        inventory.activeCannon = p;
+        cosmetics.cannonPaint = p === 'base' ? null : p;
+        cannon.image = document.getElementById(p + 'Cannon');
+        barrel.image = document.getElementById(p + 'Barrel');
+        player.image = document.getElementById(p === 'base' ? 'playerBase' : 'player' + p.charAt(0).toUpperCase() + p.slice(1));
+        const upgradeMap = {
+            base: { power: 0,   speed: 0  },
+            blue: { power: 5,   speed: 1  },
+            red:  { power: 15,  speed: 3  },
+            gold: { power: 35,  speed: 8  },
+            neon: { power: 70,  speed: 18 }
+        };
+        const stats = upgradeMap[p];
+        upgrades.power = stats.power;
+        upgrades.speed = stats.speed;
+        savePlayerData();
     }
 
     function handleEnemies(deltaTime) {
@@ -716,73 +918,128 @@ window.addEventListener('load', function() {
         enemies = enemies.filter(enemy => !enemy.markedForDeletion);
     }
 
+    function drawText(context, text, x, y, font, color = 'white', align = 'left') {
+        context.font = font;
+        context.textAlign = align;
+        context.strokeStyle = 'black';
+        context.lineWidth = 4;
+        context.lineJoin = 'round';
+        context.strokeText(text, x, y);
+        context.fillStyle = color;
+        context.fillText(text, x, y);
+    }
+
     function displayStatusText(context) {
-        score += Math.floor(player.distance / 100) || 0 ;
-        if (!gameOver) {
-            context.font = '40px PixelOperator';
-            context.fillStyle = 'black';
-            context.fillText('Score: ' + score, 20, 50);
-            context.fillStyle = 'white';
-            context.fillText('Score: ' + score, 22, 52);
-            context.font = '40px PixelOperator';
-            context.fillStyle = 'black';
-            context.fillText('Score: ' + score, 20, 50);
-            context.fillStyle = 'white';
-            context.fillText('Score: ' + score, 22, 52);
-            context.fillStyle = 'black';
-            // lives text
-            context.font = '30px PixelOperator';
-            context.fillText('Lives: ' + lives, 20, 100);
-            context.fillStyle = 'white';
-            context.fillText('Lives: ' + lives, 22, 102);
-            const dist = Math.floor(player.distance / 100) || 0;
+        if (gameStart && !gameOver) {
+            const newDistance = Math.floor(player.distance / 100) || 0;
+            if (newDistance > lastScoredDistance) {
+                score += newDistance - lastScoredDistance;
+                lastScoredDistance = newDistance;
+            }
         }
-        else {
-            if (score > highScore) highScore = score;
-            const milestone = Math.floor(score / 1000);
+        if (!gameOver) {
+            // boosts remaining
+            const boostCount = player.boosts || 0;
+            const totalBoosts = baseBoosts;
+            const squareSize = 20;
+            const gap = 4;
+            const totalWidth = totalBoosts * (squareSize + gap);
+            const startX = canvas.width - 20 - totalWidth;
+            for (let i = 0; i < totalBoosts; i++) {
+                context.fillStyle = i < boostCount ? 'rgba(255,200,0,0.9)' : 'rgba(255,255,255,0.2)';
+                context.fillRect(startX + i * (squareSize + gap), canvas.height - 40, squareSize, squareSize);
+            }
+            drawText(context, 'BOOSTS', startX - 8, canvas.height - 24, '16px PixelOperator', 'white', 'right');
+            // score
+            drawText(context, 'Score: ' + score, 20, 50, '40px PixelOperator');
+            // lives
+            drawText(context, 'Lives: ' + lives, 20, 100, '30px PixelOperator');
+            // leaderboard
+            drawText(context, 'GLOBAL TOP 3', 20, 150, '16px PixelOperator', 'rgba(255,255,255,0.9)');
+            if (leaderboard.length === 0) {
+                drawText(context, 'no scores yet', 20, 172, '16px PixelOperator', 'rgba(255,255,255,0.5)');
+            } else {
+                const medals = ['#FFD700', '#C0C0C0', '#CD7F32'];
+                leaderboard.slice(0, 3).forEach((entry, i) => {
+                    drawText(context, `${i + 1}. ${entry.username}  ${entry.score}`, 20, 172 + i * 22, '16px PixelOperator', medals[i]);
+                });
+            }
+            // refresh leaderboard periodically
+            if (gameStart) {
+                leaderboardTimer += 16;
+                if (leaderboardTimer > LEADERBOARD_FETCH_INTERVAL) {
+                    leaderboardTimer = 0;
+                    fetchLeaderboard();
+                }
+            }
+        // GAME OVER SCREEN
+        } else {
+            if (score > highScore) {
+                highScore = score;
+                savePlayerData();
+                if (playerAuth.loggedIn) {
+                    fetch('http://localhost/paintlaunch/highscore.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: playerAuth.token, score: highScore })
+                    })
+                    .then(() => fetchLeaderboard())
+                    .catch(() => {});
+                }
+            }
+            const milestone = Math.floor(score / 1);
             if (milestone > lastCoinScore) {
-                currency += (milestone - lastCoinScore) * 1;
+                context._coinsEarned = (milestone - lastCoinScore) * 1;
+                currency += context._coinsEarned;
                 lastCoinScore = milestone;
             }
-            context.font = '45px PixelOperator';
-            context.textAlign = 'center';
-            context.fillStyle = 'black';
-            context.fillText('GAME OVER!', canvas.width/2, 200);
-            context.fillStyle = 'white';
-            context.fillText('GAME OVER!', canvas.width/2 + 2, 202);
-            context.font = '35px PixelOperator';
-            // coins
-            context.fillStyle = 'black';
-            context.fillText('COINS: +' + currency, canvas.width/2, 300);
-            context.fillStyle = 'white';
-            context.fillText('COINS: +' + currency, canvas.width/2 + 2, 302);
-            // score
-            context.font = '30px PixelOperator';
-            context.fillStyle = 'black';
-            context.fillText('SCORE: ' + score, canvas.width/2, 400);
-            context.fillStyle = 'white';
-            context.fillText('SCORE: ' + score, canvas.width/2 + 2, 402);
-            context.fillStyle = 'black';
-            context.fillText('HIGH SCORE: ' + highScore, canvas.width/2, 500);
-            context.fillStyle = 'white';
-            context.fillText('HIGH SCORE: ' + highScore, canvas.width/2 + 2, 502);
+            const coinsEarned = context._coinsEarned || 0;
+            // game over screen
+            drawText(context, 'GAME OVER!', canvas.width/2, 120, '50px PixelOperator', 'white', 'center');
+            // score section
+            drawText(context, 'SCORE', canvas.width/2, 195, '18px PixelOperator', 'rgba(255,255,255,0.5)', 'center');
+            drawText(context, '' + score, canvas.width/2, 240, '40px PixelOperator', 'white', 'center');
+            // high score
+            drawText(context, 'BEST', canvas.width/2, 280, '18px PixelOperator', 'rgba(255,255,255,0.5)', 'center');
+            drawText(context, '' + highScore, canvas.width/2, 325, '40px PixelOperator', '#FFD700', 'center');
+            // coins earned
+            drawText(context, 'COINS EARNED', canvas.width/2, 370, '18px PixelOperator', 'rgba(255,255,255,0.5)', 'center');
+            drawText(context, '+' + coinsEarned, canvas.width/2, 410, '32px PixelOperator', 'gold', 'center');
+            // divider
+            context.strokeStyle = 'rgba(255,255,255,0.2)';
+            context.lineWidth = 1;
+            context.beginPath();
+            context.moveTo(canvas.width/2 - 150, 430);
+            context.lineTo(canvas.width/2 + 150, 430);
+            context.stroke();
+            // leaderboard
+            drawText(context, 'WORLD TOP 3', canvas.width/2, 460, '18px PixelOperator', 'rgba(255,255,255,0.6)', 'center');
+            if (leaderboard.length === 0) {
+                drawText(context, 'no scores yet', canvas.width/2, 490, '16px PixelOperator', 'rgba(255,255,255,0.3)', 'center');
+            } else {
+                const medals = ['#FFD700', '#C0C0C0', '#CD7F32'];
+                leaderboard.slice(0, 3).forEach((entry, i) => {
+                    drawText(context, `${i + 1}.  ${entry.username}`, canvas.width/2 - 60, 490 + i * 28, '16px PixelOperator', medals[i], 'left');
+                    drawText(context, '' + entry.score, canvas.width/2 + 60, 490 + i * 28, '16px PixelOperator', medals[i], 'right');
+                });
+            }
             // play again button
             context.fillStyle = '#2980b9';
-            context.fillRect(canvas.width/2 - 100, 550, 200, 60);
-            context.strokeStyle = 'white';
+            context.fillRect(canvas.width/2 - 110, 590, 220, 60);
+            context.strokeStyle = 'rgba(255,255,255,0.3)';
             context.lineWidth = 2;
-            context.strokeRect(canvas.width/2 - 100, 550, 200, 60);
-            context.fillStyle = 'white';
-            context.font = '20px PixelOperator';
-            context.fillText('PLAY AGAIN', canvas.width/2, 590);
+            context.strokeRect(canvas.width/2 - 110, 590, 220, 60);
+            drawText(context, 'PLAY AGAIN', canvas.width/2, 630, '24px PixelOperator', 'white', 'center');
         }
     }
 
     function reset() {
         score = 0;
+        lastScoredDistance = 0;
         lastCoinScore = 0;
-        lives = 3;
-        player.boosts = 3;
+        ctx._coinsEarned = 0;
+        lives = baseLives;
+        player.boosts = baseBoosts;
         gameOver = false;
         gameStart = false;
         enemies = [];
@@ -802,16 +1059,93 @@ window.addEventListener('load', function() {
         player.frame = 0;
         cannon = new Cannon(canvas.width, canvas.height);
         barrel = new Barrel(canvas.width, canvas.height, cannon.width, cannon.height);
-        if (cosmetics.cannonPaint) {
-            const p = cosmetics.cannonPaint;
-            cannon.image = document.getElementById(p + 'Cannon');
-            barrel.image = document.getElementById(p + 'Barrel');
-            player.image = document.getElementById('player' + p.charAt(0).toUpperCase() + p.slice(1));
-            const activeItem = shopItems.cannon.find(item => item.label.toLowerCase().startsWith(p));
-            if (activeItem) activeItem.onBuy();
-        }
+        applyCannonSkin(inventory.activeCannon);
         requestAnimationFrame(animate);
     }
+
+    function savePlayerData() {
+        if (!playerAuth.loggedIn) return;
+
+        const saveData = {
+            token: playerAuth.token,
+            currency,
+            highScore,
+            baseLives,
+            baseBoosts,
+            upgrades,
+            inventory: {
+                cannons: inventory.cannons,
+                activeCannon: inventory.activeCannon
+            },
+            boostPower: player.boostPower || 1,
+            shopItems: {
+                cannon: shopItems.cannon.map(i => ({ label: i.label, owned: i.owned })),
+                player: shopItems.player.map(i => ({ label: i.label, owned: i.owned })),
+                boost: shopItems.boost.map(i => ({ label: i.label, owned: i.owned })),
+            }
+        };
+
+        // TODO: implement POST to your save endpoint
+        // expected request:  saveData object above
+        // expected response: { success: true } or { success: false, message: '...' }
+        fetch('http://localhost/paintlaunch/save.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(saveData)
+        }).catch(() => {});
+    }
+
+    function loadPlayerData() {
+        if (!playerAuth.loggedIn) return;
+
+        // TODO: implement GET from your load endpoint
+        // expected request:  token as query param
+        // expected response: { success: true, data: { currency, highScore, baseLives, upgrades, inventory, boostPower, shopItems } }
+        fetch(`http://localhost/paintlaunch/load.php?token=${playerAuth.token}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) return;
+                const d = data.data;
+                currency = d.currency ?? currency;
+                highScore = d.highScore ?? highScore;
+                baseLives = d.baseLives ?? baseLives;
+                baseBoosts = d.baseBoosts ?? baseBoosts;
+                lives = baseLives;
+                upgrades.power = d.upgrades?.power ?? upgrades.power;
+                upgrades.speed = d.upgrades?.speed ?? upgrades.speed;
+                player.boostPower = d.boostPower ?? 1;
+                if (d.inventory) {
+                    inventory.cannons = d.inventory.cannons ?? inventory.cannons;
+                    inventory.activeCannon = d.inventory.activeCannon ?? inventory.activeCannon;
+                }
+                if (d.shopItems) {
+                    ['cannon', 'player', 'boost'].forEach(cat => {
+                        d.shopItems[cat]?.forEach(saved => {
+                            const match = shopItems[cat].find(i => i.label === saved.label);
+                            if (match) match.owned = saved.owned;
+                        });
+                    });
+                }
+                applyCannonSkin(inventory.activeCannon);
+            })
+            .catch(() => {});
+    }
+
+    function fetchLeaderboard() {
+        // TODO: implement GET from your leaderboard endpoint
+        // expected response: { success: true, scores: [ {username, score}, {username, score}, {username, score} ] }
+        // top 3 only, sorted by score descending
+        fetch('http://localhost/paintlaunch/leaderboard.php')
+            .then(res => {
+                if (!res.ok) throw new Error('server unavailable');
+                return res.json();
+            })
+            .then(data => {
+                if (data.success) leaderboard = data.scores;
+            })
+            .catch(() => {}); // silent fail
+    }
+    setTimeout(fetchLeaderboard, 2000); // fetch on load
 
     const input = new InputHandler();
     let cannon = new Cannon(canvas.width, canvas.height);
@@ -830,7 +1164,6 @@ window.addEventListener('load', function() {
     };
     // dev panel
     let devUnlocked = false;
-    const DEV_PASSWORD = 'codeBlooded';
     function createDevPanel() {
         // login button
         const devBtn = document.createElement('button');
@@ -881,7 +1214,7 @@ window.addEventListener('load', function() {
             }
         });
         //#region SERVER AUTH
-        const USE_SERVER_AUTH = false; // flip to true when PHP is ready
+        const USE_SERVER_AUTH = true; // flip to true when PHP is ready
         const AUTH_ENDPOINT = 'http://localhost/paintlaunch/auth.php';
 
         loginModal.querySelector('#devLoginBtn').addEventListener('click', async () => {
@@ -910,15 +1243,8 @@ window.addEventListener('load', function() {
                     errorEl.style.display = 'block';
                 }
             } else {
-                if (pw === DEV_PASSWORD) {
-                    devUnlocked = true;
-                    loginModal.style.display = 'none';
-                    devConsole.style.display = 'block';
-                    log('dev console unlocked', '#2980b9');
-                } else {
-                    errorEl.textContent = 'incorrect password';
-                    errorEl.style.display = 'block';
-                }
+                errorEl.textContent = 'server auth required';
+                errorEl.style.display = 'block';
             }
         });
         //#endregion
@@ -948,6 +1274,132 @@ window.addEventListener('load', function() {
             }
         });
     }
+    function createAuthPanel() {
+        const modal = document.createElement('div');
+        modal.id = 'authModal';
+        modal.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1a2e;border:2px solid white;padding:24px;z-index:1000;color:white;font-family:monospace;min-width:280px;';
+        modal.innerHTML = `
+            <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
+                <span id="authTitle" style="font-size:16px;">SIGN IN</span>
+                <button id="authCloseBtn" style="background:none;border:none;color:white;cursor:pointer;font-size:16px;">✕</button>
+            </div>
+            <input id="authUsername" type="text" placeholder="username" style="width:100%;padding:6px;background:#111;color:#fff;border:1px solid #555;margin-bottom:8px;box-sizing:border-box;font-family:monospace;">
+            <input id="authPassword" type="password" placeholder="password" style="width:100%;padding:6px;background:#111;color:#fff;border:1px solid #555;margin-bottom:12px;box-sizing:border-box;font-family:monospace;">
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <button id="authLoginBtn" style="flex:1;padding:8px;background:#2980b9;color:white;border:none;cursor:pointer;font-family:monospace;">LOGIN</button>
+                <button id="authRegisterBtn" style="flex:1;padding:8px;background:#27ae60;color:white;border:none;cursor:pointer;font-family:monospace;">REGISTER</button>
+            </div>
+            <button id="authLogoutBtn" style="display:none;width:100%;padding:8px;background:#c0392b;color:white;border:none;cursor:pointer;font-family:monospace;margin-bottom:8px;">LOGOUT</button>
+            <div id="authMessage" style="font-size:12px;margin-top:4px;min-height:16px;"></div>
+        `;
+        document.body.appendChild(modal);
+
+        function setMessage(msg, color = '#f55') {
+            modal.querySelector('#authMessage').style.color = color;
+            modal.querySelector('#authMessage').textContent = msg;
+        }
+
+        function setLoggedInState() {
+            modal.querySelector('#authUsername').style.display = 'none';
+            modal.querySelector('#authPassword').style.display = 'none';
+            modal.querySelector('#authLoginBtn').style.display = 'none';
+            modal.querySelector('#authRegisterBtn').style.display = 'none';
+            modal.querySelector('#authLogoutBtn').style.display = 'block';
+            modal.querySelector('#authTitle').textContent = 'HI, ' + playerAuth.username.toUpperCase();
+            setMessage('logged in', '#0f0');
+        }
+
+        function setLoggedOutState() {
+            modal.querySelector('#authUsername').style.display = 'block';
+            modal.querySelector('#authPassword').style.display = 'block';
+            modal.querySelector('#authLoginBtn').style.display = 'block';
+            modal.querySelector('#authRegisterBtn').style.display = 'block';
+            modal.querySelector('#authLogoutBtn').style.display = 'none';
+            modal.querySelector('#authTitle').textContent = 'SIGN IN';
+            setMessage('');
+        }
+
+        // LOGIN
+        modal.querySelector('#authLoginBtn').addEventListener('click', async () => {
+            const username = modal.querySelector('#authUsername').value.trim();
+            const password = modal.querySelector('#authPassword').value;
+            if (!username || !password) { setMessage('fill in all fields'); return; }
+            setMessage('logging in...', '#aaa');
+
+            // TODO: implement POST to your login endpoint
+            // expected request:  { username, password }
+            // expected response: { success: true, token: '...', username: '...' }
+            //                 or { success: false, message: '...' }
+            try {
+                const res = await fetch('http://localhost/paintlaunch/login.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    playerAuth.loggedIn = true;
+                    playerAuth.username = data.username;
+                    playerAuth.token = data.token;
+                    setLoggedInState();
+                    loadPlayerData();
+                } else {
+                    setMessage(data.message || 'login failed');
+                }
+            } catch (err) {
+                setMessage('server unreachable');
+            }
+        });
+
+        // REGISTER
+        modal.querySelector('#authRegisterBtn').addEventListener('click', async () => {
+            const username = modal.querySelector('#authUsername').value.trim();
+            const password = modal.querySelector('#authPassword').value;
+            if (!username || !password) { setMessage('fill in all fields'); return; }
+            setMessage('registering...', '#aaa');
+
+            // TODO: implement POST to your register endpoint
+            // expected request:  { username, password }
+            // expected response: { success: true, token: '...', username: '...' }
+            //                 or { success: false, message: '...' }
+            try {
+                const res = await fetch('http://localhost/paintlaunch/register.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    playerAuth.loggedIn = true;
+                    playerAuth.username = data.username;
+                    playerAuth.token = data.token;
+                    setLoggedInState();
+                    loadPlayerData();
+                } else {
+                    setMessage(data.message || 'registration failed');
+                }
+            } catch (err) {
+                setMessage('server unreachable');
+            }
+        });
+
+        // LOGOUT
+        modal.querySelector('#authLogoutBtn').addEventListener('click', () => {
+            playerAuth.loggedIn = false;
+            playerAuth.username = null;
+            playerAuth.token = null;
+            setLoggedOutState();
+        });
+
+        modal.querySelector('#authCloseBtn').addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+
+        if (playerAuth.loggedIn) setLoggedInState();
+
+        window.authModal = modal;
+    }
+    createAuthPanel();
     createDevPanel();
     //#endregion
 
@@ -976,22 +1428,40 @@ window.addEventListener('load', function() {
         if (gameStart) {
             background.update(player.speed);
             player.draw(ctx);
-            player.update(deltaTime, enemies);
+            player.update(deltaTime, enemies, background.height);
             handleEnemies(deltaTime);
         }
         if (barrel) {barrel.draw(ctx); barrel.update(input); drawTrajectory(ctx);}
         if (cannon) {cannon.draw(ctx, barrel ? barrel.x : -9999);}
         if (barrel && !barrel.active) barrel = null;
         if (cannon && !cannon.active) cannon = null;
+        if (boostFlash > 0) {
+            const alpha = boostFlash / 10 * 0.25;
+            ctx.fillStyle = `rgba(255, 200, 0, ${alpha})`;
+            ctx.fillRect(-canvas.width, -canvas.height, canvas.width * 3, canvas.height * 3);
+            boostFlash--;
+        }
+        if (hitFlash > 0) {
+            const alpha = hitFlash / 20 * 0.4;
+            ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
+            ctx.fillRect(-canvas.width, -canvas.height, canvas.width * 3, canvas.height * 3);
+            hitFlash--;
+        }
         ctx.restore();
         displayStatusText(ctx);
         drawShop(ctx);
+        drawInventory(ctx);
+        drawAimingOverlay(ctx);
+        if (!gameReady) drawStartScreen(ctx);
         setTimeout(() => {
-            if (!gameOver) requestAnimationFrame(animate);
-            else {
+            if (!gameOver) {
+                requestAnimationFrame(animate);
+            } else {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.save();
                 ctx.translate(0, cameraY);
+                boostFlash = 0;
+                hitFlash = 0;
                 background.draw(ctx);
                 player.draw(ctx);
                 ctx.restore();
