@@ -622,7 +622,9 @@ window.addEventListener('load', function() {
             this.y = player.y - Math.random() * 600;
         }
         draw(context) {
-            context.drawImage(this.image, this.frameX * 120, 0, 120, 100, this.x, this.y, this.width, this.height);
+            const frameW = 160;
+            const frameH = 119;
+            context.drawImage(this.image, this.frameX * frameW, 0, frameW, frameH, this.x, this.y, this.width, this.height);
         }
     }
 
@@ -637,7 +639,9 @@ window.addEventListener('load', function() {
             this.y = player.y - Math.random() * 600;
         }
         draw(context) {
-            context.drawImage(this.image, this.frameX * 200, 0, 200, 150, this.x, this.y, this.width, this.height);
+            const frameW = 160;
+            const frameH = 119;
+            context.drawImage(this.image, this.frameX * frameW, 0, frameW, frameH, this.x, this.y, this.width, this.height);
         }
     }
 
