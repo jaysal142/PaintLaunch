@@ -1019,12 +1019,14 @@ window.addEventListener('load', function() {
             // leaderboard
             drawText(context, 'WORLD TOP 3', canvas.width/2, 460, '18px PixelOperator', 'rgba(255,255,255,0.6)', 'center');
             if (leaderboard.length === 0) {
-                drawText(context, 'no scores yet', canvas.width/2, 490, '16px PixelOperator', 'rgba(255,255,255,0.3)', 'center');
+                drawText(context, 'no scores yet', canvas.width/2, 488, '16px PixelOperator', 'rgba(255,255,255,0.3)', 'center');
             } else {
                 const medals = ['#FFD700', '#C0C0C0', '#CD7F32'];
                 leaderboard.slice(0, 3).forEach((entry, i) => {
-                    drawText(context, `${i + 1}.  ${entry.username}`, canvas.width/2 - 60, 490 + i * 28, '16px PixelOperator', medals[i], 'left');
-                    drawText(context, '' + entry.score, canvas.width/2 + 60, 490 + i * 28, '16px PixelOperator', medals[i], 'right');
+                    const ey = 488 + i * 32;
+                    const lineX = canvas.width/2 - 100;
+                    drawText(context, `${i + 1}.  ${entry.username}`, lineX, ey, '14px PixelOperator', medals[i], 'left');
+                    drawText(context, '' + entry.score, lineX + 200, ey, '14px PixelOperator', medals[i], 'right');
                 });
             }
             // play again button
@@ -1158,13 +1160,25 @@ window.addEventListener('load', function() {
     const background = new Background(canvas.width, canvas.height);
 
     //#region developer access
-    window.dev = {
-        setCurrency: (v) => { currency = v; },
-        setLives: (v) => { lives = v; },
-        setScore: (v) => { score = v; },
-        setUpgrade: (k, v) => { upgrades[k] = v; },
-        addBoosts: (v) => { player.boosts += v; },
-        setBoostPower: (v) => { player.boostPower = v; },
+    // generate a random session secret — changes every page load
+    const _devSecret = Math.random().toString(36).slice(2);
+
+    // only expose a locked executor, not the commands directly
+    window._devExec = function(secret, cmd) {
+        if (secret !== _devSecret) {
+            console.warn('unauthorized');
+            return;
+        }
+        const commands = {
+            setCurrency: (v) => { currency = v; },
+            setLives: (v) => { lives = v; },
+            setScore: (v) => { score = v; },
+            setUpgrade: (k, v) => { upgrades[k] = v; },
+            addBoosts: (v) => { player.boosts += v; },
+            setBoostPower: (v) => { player.boostPower = v; },
+        };
+        const fn = new Function('commands', `return commands.${cmd}`)(commands);
+        if (typeof fn === 'function') return fn;
     };
     // dev panel
     let devUnlocked = false;
@@ -1196,7 +1210,7 @@ window.addEventListener('load', function() {
                 <button id="devCloseBtn" style="background:none;border:none;color:white;cursor:pointer;font-size:16px;">✕</button>
             </div>
             <div id="devOutput" style="background:#111;padding:8px;height:120px;overflow-y:auto;font-size:12px;margin-bottom:10px;border:1px solid #333;"></div>
-            <input id="devInput" type="text" placeholder="dev.setCurrency(1000)" style="width:100%;padding:6px;background:#111;color:#0f0;border:1px solid #555;box-sizing:border-box;font-family:monospace;">
+            <input id="devInput" type="text" placeholder="setCurrency(1000)" style="width:100%;padding:6px;background:#111;color:#0f0;border:1px solid #555;box-sizing:border-box;font-family:monospace;">
         `;
         document.body.appendChild(devConsole);
         const output = devConsole.querySelector('#devOutput');
@@ -1264,19 +1278,22 @@ window.addEventListener('load', function() {
         });
         // dev input execution
         devConsole.querySelector('#devInput').addEventListener('keydown', e => {
-            if (e.key === 'Enter') {
-                const cmd = e.target.value.trim();
-                if (!cmd) return;
-                log('> ' + cmd, '#fff');
-                try {
-                    const result = new Function('dev', `return ${cmd}`)(window.dev);
-                    log(result !== undefined ? String(result) : 'ok', '#0f0');
-                } catch (err) {
-                    log(err.message, '#f55');
-                }
-                e.target.value = '';
+        if (e.key === 'Enter') {
+            const cmd = e.target.value.trim();
+            if (!cmd) return;
+            log('> ' + cmd, '#fff');
+            try {
+                const fn = window._devExec(_devSecret, cmd.split('(')[0]);
+                if (!fn) { log('unknown command', '#f55'); return; }
+                const args = cmd.match(/\((.+)\)/)?.[1];
+                const result = args ? fn(...JSON.parse(`[${args}]`)) : fn();
+                log(result !== undefined ? String(result) : 'ok', '#0f0');
+            } catch (err) {
+                log(err.message, '#f55');
             }
-        });
+            e.target.value = '';
+        }
+    });
     }
     function createAuthPanel() {
         const modal = document.createElement('div');
@@ -1330,10 +1347,6 @@ window.addEventListener('load', function() {
             if (!username || !password) { setMessage('fill in all fields'); return; }
             setMessage('logging in...', '#aaa');
 
-            // TODO: implement POST to your login endpoint
-            // expected request:  { username, password }
-            // expected response: { success: true, token: '...', username: '...' }
-            //                 or { success: false, message: '...' }
             try {
                 const res = await fetch('http://localhost/paintlaunch/login.php', {
                     method: 'POST',
@@ -1362,10 +1375,6 @@ window.addEventListener('load', function() {
             if (!username || !password) { setMessage('fill in all fields'); return; }
             setMessage('registering...', '#aaa');
 
-            // TODO: implement POST to your register endpoint
-            // expected request:  { username, password }
-            // expected response: { success: true, token: '...', username: '...' }
-            //                 or { success: false, message: '...' }
             try {
                 const res = await fetch('http://localhost/paintlaunch/register.php', {
                     method: 'POST',
@@ -1392,7 +1401,8 @@ window.addEventListener('load', function() {
             playerAuth.loggedIn = false;
             playerAuth.username = null;
             playerAuth.token = null;
-            setLoggedOutState();
+            modal.style.display = 'none';
+            window.location.href = window.location.href; // force full reload
         });
 
         modal.querySelector('#authCloseBtn').addEventListener('click', () => {

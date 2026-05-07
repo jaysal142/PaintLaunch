@@ -6,8 +6,8 @@ header('Access-Control-Allow-Headers: Content-Type');
 
 $host = 'localhost';
 $db   = 'paintlaunch';
-$user = 'root'; // CHANGE THIS TO YOUR USERNAME
-$pass = 'Lucasis2'; // CHANGE THIS TO YOUR PASSWORD
+$user = 'root';
+$pass = '';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$db", $user, $pass);

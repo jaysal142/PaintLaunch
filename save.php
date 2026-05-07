@@ -17,7 +17,7 @@ try {
         $stmt->execute([
             $data['currency'], $data['highScore'], $data['baseLives'], $data['baseBoosts'],
             json_encode($data['upgrades']), json_encode($data['inventory']),
-            json_encode($data['shop_items']), $data['boostPower'], $session['user_id']
+            json_encode($data['shopItems']), $data['boostPower'], $session['user_id']
         ]);
         echo json_encode(['success' => true]);
     } else {

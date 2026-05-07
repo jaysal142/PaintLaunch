@@ -10,9 +10,10 @@ try {
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($res) {
-        $res['upgrades'] = json_decode($res['upgrades']);
-        $res['inventory'] = json_decode($res['inventory']);
-        $res['shop_items'] = json_decode($res['shop_items']);
+        $res['upgrades']  = json_decode($res['upgrades'], true);
+        $res['inventory'] = json_decode($res['inventory'], true);
+        $res['shopItems'] = json_decode($res['shop_items'], true); // rename to camelCase
+        unset($res['shop_items']); // remove the snake_case version
         echo json_encode(['success' => true, 'data' => $res]);
     } else {
         echo json_encode(['success' => false]);
